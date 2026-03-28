@@ -3,6 +3,7 @@ let router = express.Router();
 // let slugify = require('slugify');
 let categorySchema = require('../schemas/category');
 let bookSchema = require('../schemas/book');
+const { model } = require('mongoose');
 
 
 router.get('/', async (req, res) => {
