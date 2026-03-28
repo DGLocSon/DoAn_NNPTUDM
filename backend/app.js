@@ -16,14 +16,14 @@ app.set('view engine', 'ejs');
 
 app.use(logger('dev'));
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
 app.use('/api/v1/users', usersRouter);
-// app.use('/api/v1/categories', require('./routes/categories'));
-// app.use('/api/v1/products', require('./routes/products'));
+app.use('/api/v1/categories', require('./routes/categories'));
+app.use('/api/v1/book', require('./routes/books'));
 app.use('/api/v1/roles', require('./routes/roles'));
 app.use('/api/v1/auth', require('./routes/auth'));
 // app.use('/api/v1/carts', require('./routes/carts'));
