@@ -55,14 +55,17 @@ router.post('/', async (req, res) => {
             images: req.body.images,
             price: req.body.price
         })
-        await newbooks.save({ session })
+        const savedBook=await newbooks.save({ session })
+
         console.log(newbooks);
         let newInventory = new inventorySchema({
             bookId: newbooks._id,
             stock: 0
         })
+        const result = await bookSchema.findById(savedBook._id)
+            .populate('categoryId', 'name');
         await newInventory.save({ session });
-        await newInventory.populate('book')
+        await newInventory.populate('bookId')
         await session.commitTransaction();
         await session.endSession()
         res.send(newInventory)
