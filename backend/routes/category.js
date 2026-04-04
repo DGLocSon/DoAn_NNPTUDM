@@ -1,8 +1,9 @@
 const express = require('express');
 let router = express.Router();
-let slugify = require('slugify');
+// let slugify = require('slugify');
 let categorySchema = require('../schemas/category');
 let bookSchema = require('../schemas/book');
+const { model } = require('mongoose');
 
 
 router.get('/', async (req, res) => {
@@ -49,7 +50,7 @@ router.get('/:id/books', async (req, res) => {
         }
 
         const books = await bookSchema.find({ 
-            category: categoryId, 
+            categoryId: categoryId, 
             isDeleted: false 
         });
         

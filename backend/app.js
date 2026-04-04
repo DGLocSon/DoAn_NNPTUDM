@@ -6,7 +6,7 @@ var logger = require('morgan');
 let mongoose = require('mongoose')
 
 var indexRouter = require('./routes/index');
-var usersRouter = require('./routes/users');
+// var usersRouter = require('./routes/user'); // ❌ không cần nữa
 
 var app = express();
 
@@ -21,11 +21,27 @@ app.use(cookieParser());
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.use('/', indexRouter);
-app.use('/api/v1/users', usersRouter);
-app.use('/api/v1/categories', require('./routes/categories'));
-app.use('/api/v1/book', require('./routes/books'));
-app.use('/api/v1/roles', require('./routes/roles'));
-app.use('/api/v1/auth', require('./routes/auth'));
+
+// ===== API ROUTES =====
+app.use('/api/v1', require('./routes')); // 🔥 dùng index router
+
+// app.use('/api/v1/users', usersRouter);
+// app.use('/api/v1/roles', require('./routes/role'));
+// app.use('/api/v1/auth', require('./routes/auth'));
+
+// app.use('/api/v1/categories', require('./routes/category'));
+// app.use('/api/v1/books', require('./routes/book')); 
+// app.use('/api/v1/authors', require('./routes/author'));
+
+// app.use('/api/v1/carts', require('./routes/cart'));
+// app.use('/api/v1/orders', require('./routes/order'));
+
+// app.use('/api/v1/payments', require('./routes/payment'));
+// app.use('/api/v1/shipments', require('./routes/shipment'));
+
+// app.use('/api/v1/addresses', require('./routes/address'));
+// app.use('/api/v1/inventories', require('./routes/inventory'));
+
 // app.use('/api/v1/carts', require('./routes/carts'));
 // app.use('/api/v1/upload', require('./routes/uploads'));
 
@@ -44,11 +60,9 @@ app.use(function (req, res, next) {
 
 // error handler
 app.use(function (err, req, res, next) {
-  // set locals, only providing error in development
   res.locals.message = err.message;
   res.locals.error = req.app.get('env') === 'development' ? err : {};
 
-  // render the error page
   res.status(err.status || 500);
   res.render('error');
 });

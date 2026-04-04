@@ -14,7 +14,7 @@ router.get('/', async (req, res) => {
         price: {
             $gte: minQ
         }
-    }).populate('category', 'name').exec();
+    }).populate('categoryId', 'name').exec();
     res.send(result)
 })
 router.get('/:id', async (req, res) => {//req.params
@@ -51,18 +51,21 @@ router.post('/', async (req, res) => {
                 remove: undefined,
             }),
             description: req.body.description,
-            category: req.body.category,
+            categoryId: req.body.category,
             images: req.body.images,
             price: req.body.price
         })
-        await newbooks.save({ session })
+        const savedBook=await newbooks.save({ session })
+
         console.log(newbooks);
         let newInventory = new inventorySchema({
-            book: newbooks._id,
+            bookId: newbooks._id,
             stock: 0
         })
+        const result = await bookSchema.findById(savedBook._id)
+            .populate('categoryId', 'name');
         await newInventory.save({ session });
-        await newInventory.populate('book')
+        await newInventory.populate('bookId')
         await session.commitTransaction();
         await session.endSession()
         res.send(newInventory)
@@ -104,6 +107,7 @@ router.delete('/:id', async (req, res) => {
         if (result) {
             result.isDeleted = true;
             await result.save();
+            res.send(result);
         } else {
             res.status(404).send({
                 message: "ID NOT FOUND"
