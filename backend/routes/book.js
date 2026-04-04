@@ -3,122 +3,187 @@ let router = express.Router()
 let slugify = require('slugify')
 let bookSchema = require('../schemas/book')
 let inventorySchema = require('../schemas/inventory')
-let categorySchema = require('../schemas/category')
 let mongoose = require('mongoose')
 
+let { CheckLogin, CheckRole } = require('../utils/authHandler')
+
+/**
+ * GET ALL BOOKS
+ */
 router.get('/', async (req, res) => {
-    let queries = req.query;
-    let minQ = queries.min ? queries.min : 0;
-    let result = await bookSchema.find({
-        isDeleted: false,
-        price: {
-            $gte: minQ
-        }
-    }).populate('categoryId', 'name').exec();
-    res.send(result)
+    try {
+        let minQ = req.query.min ? Number(req.query.min) : 0;
+
+        let result = await bookSchema.find({
+            isDeleted: false,
+            price: { $gte: minQ }
+        }).populate('categoryId', 'name');
+
+        return res.json({
+            success: true,
+            data: result
+        });
+
+    } catch (error) {
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
+    }
 })
-router.get('/:id', async (req, res) => {//req.params
+
+/**
+ * GET BOOK BY ID
+ */
+router.get('/:id', async (req, res) => {
     try {
         let result = await bookSchema.findOne({
             isDeleted: false,
             _id: req.params.id
-        })
-        if (result) {
-            res.send(result)
-        } else {
-            res.status(404).send({
-                message: "ID NOT FOUND"
-            })
+        }).populate('categoryId', 'name');
+
+        if (!result) {
+            return res.status(404).json({
+                success: false,
+                message: "Book not found"
+            });
         }
+
+        return res.json({
+            success: true,
+            data: result
+        });
+
     } catch (error) {
-        res.status(404).send({
-            message: "SOMETHING WENT WRONG"
-        })
+        return res.status(400).json({
+            success: false,
+            message: "Invalid ID"
+        });
     }
 })
-// REPLICA SET
-// LOCAL : bat replica set
-// ATLAS: co san
-router.post('/', async (req, res) => {
-    let session = await mongoose.startSession()
-    session.startTransaction()
-    try {
-        let newbooks = new bookSchema({
-            title: req.body.title,
-            slug: slugify(req.body.title, {
-                replacement: '-',
-                lower: false,
-                remove: undefined,
-            }),
-            description: req.body.description,
-            categoryId: req.body.category,
-            images: req.body.images,
-            price: req.body.price
-        })
-        const savedBook=await newbooks.save({ session })
 
-        console.log(newbooks);
+/**
+ * CREATE BOOK (ADMIN ONLY)
+ */
+router.post('/', CheckLogin, CheckRole(['admin']), async (req, res) => {
+    let session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        let newBook = new bookSchema({
+            title: req.body.title,
+            slug: slugify(req.body.title || '', { lower: true }),
+            description: req.body.description,
+            categoryId: req.body.categoryId,
+            image: req.body.image,
+            price: req.body.price
+        });
+
+        let savedBook = await newBook.save({ session });
+
         let newInventory = new inventorySchema({
-            bookId: newbooks._id,
+            bookId: savedBook._id,
             stock: 0
-        })
-        const result = await bookSchema.findById(savedBook._id)
-            .populate('categoryId', 'name');
+        });
+
         await newInventory.save({ session });
-        await newInventory.populate('bookId')
+
         await session.commitTransaction();
-        await session.endSession()
-        res.send(newInventory)
+        session.endSession();
+
+        return res.status(201).json({
+            success: true,
+            data: savedBook
+        });
+
     } catch (error) {
         await session.abortTransaction();
-        await session.endSession()
-        res.status(404).send(error.message)
-    }
-})
-router.put('/:id', async (req, res) => {
-    try {
-        let result = await bookSchema.findOne({
-            isDeleted: false,
-            _id: req.params.id
-        })
-        if (result) {
-            let keys = Object.keys(req.body);
-            for (const key of keys) {
-                result[key] = req.body[key]
-            }
-            await result.save();
-        } else {
-            res.status(404).send({
-                message: "ID NOT FOUND"
-            })
-        }
-    } catch (error) {
-        res.status(404).send({
-            message: "SOMETHING WENT WRONG"
-        })
-    }
-})
-router.delete('/:id', async (req, res) => {
-    try {
-        let result = await bookSchema.findOne({
-            isDeleted: false,
-            _id: req.params.id
-        })
-        if (result) {
-            result.isDeleted = true;
-            await result.save();
-            res.send(result);
-        } else {
-            res.status(404).send({
-                message: "ID NOT FOUND"
-            })
-        }
-    } catch (error) {
-        res.status(404).send({
-            message: "SOMETHING WENT WRONG"
-        })
-    }
+        session.endSession();
 
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+})
+
+/**
+ * UPDATE BOOK (ADMIN ONLY)
+ */
+router.put('/:id', CheckLogin, CheckRole(['admin']), async (req, res) => {
+    try {
+        let book = await bookSchema.findOne({
+            _id: req.params.id,
+            isDeleted: false
+        });
+
+        if (!book) {
+            return res.status(404).json({
+                success: false,
+                message: "Book not found"
+            });
+        }
+
+        // 🔥 chỉ cho update field an toàn
+        const allowedFields = ['title', 'description', 'price', 'categoryId', 'image'];
+
+        allowedFields.forEach(field => {
+            if (req.body[field] !== undefined) {
+                book[field] = req.body[field];
+            }
+        });
+
+        // update slug nếu đổi title
+        if (req.body.title) {
+            book.slug = slugify(req.body.title, { lower: true });
+        }
+
+        await book.save();
+
+        return res.json({
+            success: true,
+            data: book
+        });
+
+    } catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
+})
+
+/**
+ * DELETE BOOK (ADMIN ONLY)
+ */
+router.delete('/:id', CheckLogin, CheckRole(['admin']), async (req, res) => {
+    try {
+        let book = await bookSchema.findOne({
+            _id: req.params.id,
+            isDeleted: false
+        });
+
+        if (!book) {
+            return res.status(404).json({
+                success: false,
+                message: "Book not found"
+            });
+        }
+
+        book.isDeleted = true;
+        await book.save();
+
+        return res.json({
+            success: true,
+            message: "Deleted successfully"
+        });
+
+    } catch (error) {
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
+    }
 })
 
 module.exports = router;

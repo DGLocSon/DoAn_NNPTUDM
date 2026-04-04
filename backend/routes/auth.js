@@ -6,26 +6,52 @@ let { RegisterValidator, validationResult, ChangPasswordValidator } = require('.
 let { CheckLogin } = require('../utils/authHandler');
 let jwt = require('jsonwebtoken');
 let bcrypt = require('bcrypt');
-// let fs = require('fs'); // ❌ chưa dùng
+// let fs = require('fs'); 
 let crypto = require('crypto');
-
-// let mongoose = require('mongoose'); // ❌ không dùng session nữa
-// let cartSchema = require('../schemas/carts'); // ❌ chưa dùng
+// let mongoose = require('mongoose'); // 
+// let cartSchema = require('../schemas/carts'); // 
 
 // ================= REGISTER =================
-router.post('/register', RegisterValidator, validationResult, async function (req, res, next) {
+let roleSchema = require('../schemas/roles');
+
+router.post('/register', RegisterValidator, validationResult, async (req, res) => {
     try {
-        let newItem = await userController.CreateAnUser(
+
+        let roleId = req.body.roleId;
+
+        if (!roleId) {
+            let userRole = await roleSchema.findOne({
+                name: "user",
+                isDeleted: false
+            });
+
+            if (!userRole) {
+                return res.status(500).json({
+                    success: false,
+                    message: "Role USER chưa tồn tại"
+                });
+            }
+
+            roleId = userRole._id;
+        }
+
+        let newUser = await userController.CreateAnUser(
             req.body.username,
             req.body.password,
             req.body.email,
-            "69af870aaa71c433fa8dda8e" // 👉 nhớ là roleId phải tồn tại
+            roleId
         );
 
-        res.send(newItem); // ✅ bắt buộc phải có
+        return res.status(201).json({
+            success: true,
+            data: newUser
+        });
 
     } catch (err) {
-        res.status(400).send({ message: err.message });
+        return res.status(400).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 

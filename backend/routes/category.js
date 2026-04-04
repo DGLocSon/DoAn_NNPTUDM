@@ -1,28 +1,40 @@
 const express = require('express');
 let router = express.Router();
-// let slugify = require('slugify');
+
 let categorySchema = require('../schemas/category');
 let bookSchema = require('../schemas/book');
-const { model } = require('mongoose');
 
+let { CheckLogin, CheckRole } = require('../utils/authHandler');
 
+/**
+ * GET ALL CATEGORY (search)
+ */
 router.get('/', async (req, res) => {
     try {
-        let queries = req.query;
-        let nameQ = queries.name ? queries.name : '';
-        
-        let dataCategories = await categorySchema.find({
+        let nameQ = req.query.name || '';
+
+        let data = await categorySchema.find({
             isDeleted: false,
             name: new RegExp(nameQ, 'i')
         });
-        
-        res.send(dataCategories);
+
+        return res.json({
+            success: true,
+            data
+        });
+
     } catch (error) {
-        res.status(500).send({ message: error.message });
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 });
 
 
+/**
+ * GET CATEGORY BY ID
+ */
 router.get('/:id', async (req, res) => {
     try {
         let category = await categorySchema.findOne({
@@ -31,87 +43,164 @@ router.get('/:id', async (req, res) => {
         });
 
         if (!category) {
-            return res.status(404).send({ message: "Category không tồn tại hoặc đã bị xóa" });
+            return res.status(404).json({
+                success: false,
+                message: "Category not found"
+            });
         }
-        res.send(category);
+
+        return res.json({
+            success: true,
+            data: category
+        });
+
     } catch (error) {
-        res.status(400).send({ message: "ID không hợp lệ" });
+        return res.status(400).json({
+            success: false,
+            message: "Invalid ID"
+        });
     }
 });
 
 
+/**
+ * GET BOOKS BY CATEGORY
+ */
 router.get('/:id/books', async (req, res) => {
     try {
         const categoryId = req.params.id;
-        
-        const category = await categorySchema.exists({ _id: categoryId, isDeleted: false });
+
+        const category = await categorySchema.exists({
+            _id: categoryId,
+            isDeleted: false
+        });
+
         if (!category) {
-            return res.status(404).send({ message: "Category không hợp lệ" });
+            return res.status(404).json({
+                success: false,
+                message: "Category not found"
+            });
         }
 
-        const books = await bookSchema.find({ 
-            categoryId: categoryId, 
-            isDeleted: false 
+        const books = await bookSchema.find({
+            categoryId: categoryId,
+            isDeleted: false
+        }).populate('categoryId', 'name');
+
+        return res.json({
+            success: true,
+            data: books
         });
-        
-        res.send(books);
+
     } catch (error) {
-        res.status(500).send({ message: error.message });
+        return res.status(500).json({
+            success: false,
+            message: error.message
+        });
     }
 });
 
 
-router.post('/', async function (req, res) {
+/**
+ * CREATE CATEGORY (ADMIN ONLY)
+ */
+router.post('/', CheckLogin, CheckRole(['admin']), async (req, res) => {
     try {
         let { name, description } = req.body;
-        
-        
 
         let newItem = new categorySchema({
-            name: name,
+            name,
             description: description || ""
-
         });
 
         await newItem.save();
-        res.status(201).send(newItem);
+
+        return res.status(201).json({
+            success: true,
+            data: newItem
+        });
+
     } catch (error) {
-        res.status(400).send({ message: error.message });
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
     }
 });
 
 
-router.put('/:id', async function (req, res) {
+/**
+ * UPDATE CATEGORY (ADMIN ONLY)
+ */
+router.put('/:id', CheckLogin, CheckRole(['admin']), async (req, res) => {
     try {
+        let category = await categorySchema.findOne({
+            _id: req.params.id,
+            isDeleted: false
+        });
 
-        let updateData = req.body;
-        
-        let item = await categorySchema.findOneAndUpdate(
-            { _id: req.params.id, isDeleted: false }, 
-            updateData, 
-            { new: true, runValidators: true }
-        );
+        if (!category) {
+            return res.status(404).json({
+                success: false,
+                message: "Category not found"
+            });
+        }
 
-        if (!item) return res.status(404).send({ message: "ID không tồn tại" });
-        res.send(item);
+        // 🔥 chỉ update field an toàn
+        const allowedFields = ['name', 'description'];
+
+        allowedFields.forEach(field => {
+            if (req.body[field] !== undefined) {
+                category[field] = req.body[field];
+            }
+        });
+
+        await category.save();
+
+        return res.json({
+            success: true,
+            data: category
+        });
+
     } catch (error) {
-        res.status(400).send({ message: error.message });
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
     }
 });
 
 
-router.delete('/:id', async function (req, res) {
+/**
+ * DELETE CATEGORY (ADMIN ONLY - soft delete)
+ */
+router.delete('/:id', CheckLogin, CheckRole(['admin']), async (req, res) => {
     try {
-        let item = await categorySchema.findOneAndUpdate(
-            { _id: req.params.id, isDeleted: false },
-            { isDeleted: true },
-            { new: true }
-        );
+        let category = await categorySchema.findOne({
+            _id: req.params.id,
+            isDeleted: false
+        });
 
-        if (!item) return res.status(404).send({ message: "ID không tồn tại hoặc đã xóa rồi" });
-        res.send({ message: "Xóa thành công", data: item });
+        if (!category) {
+            return res.status(404).json({
+                success: false,
+                message: "Category not found"
+            });
+        }
+
+        category.isDeleted = true;
+        await category.save();
+
+        return res.json({
+            success: true,
+            message: "Deleted successfully"
+        });
+
     } catch (error) {
-        res.status(400).send({ message: error.message });
+        return res.status(400).json({
+            success: false,
+            message: error.message
+        });
     }
 });
 

@@ -14,8 +14,8 @@ router.use("/books", require("./book"));
 router.use("/authors", require("./author"));
 
 // CART + ORDER
-// router.use("/carts", require("./cart"));
-// router.use("/orders", require("./order"));
+router.use("/carts", require("./cart"));
+router.use("/orders", require("./order"));
 
 // PAYMENT + SHIPMENT
 // router.use("/payments", require("./payment"));

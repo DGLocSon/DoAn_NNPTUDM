@@ -2,26 +2,38 @@ const express = require("express");
 const router = express.Router();
 const authorSchema = require("../schemas/author");
 const bookSchema = require("../schemas/book");
-let mongoose = require('mongoose')
 
-// GET ALL (có search)
+let { CheckLogin, CheckRole } = require('../utils/authHandler');
+
+/**
+ * GET ALL AUTHORS (search)
+ */
 router.get("/", async (req, res) => {
   try {
-    let nameQ = req.query.name ? req.query.name : "";
+    let nameQ = req.query.name || "";
 
     const authors = await authorSchema.find({
       isDeleted: false,
       name: new RegExp(nameQ, "i")
     });
 
-    res.send(authors);
+    return res.json({
+      success: true,
+      data: authors
+    });
+
   } catch (error) {
-    res.status(500).send({ message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 });
 
 
-// GET BY ID
+/**
+ * GET AUTHOR BY ID
+ */
 router.get("/:id", async (req, res) => {
   try {
     const author = await authorSchema.findOne({
@@ -30,17 +42,29 @@ router.get("/:id", async (req, res) => {
     });
 
     if (!author) {
-      return res.status(404).send({ message: "Author không tồn tại" });
+      return res.status(404).json({
+        success: false,
+        message: "Author not found"
+      });
     }
 
-    res.send(author);
+    return res.json({
+      success: true,
+      data: author
+    });
+
   } catch (error) {
-    res.status(400).send({ message: "ID không hợp lệ" });
+    return res.status(400).json({
+      success: false,
+      message: "Invalid ID"
+    });
   }
 });
 
 
-// GET BOOKS BY AUTHOR
+/**
+ * GET BOOKS BY AUTHOR
+ */
 router.get("/:id/books", async (req, res) => {
   try {
     const authorId = req.params.id;
@@ -51,23 +75,35 @@ router.get("/:id/books", async (req, res) => {
     });
 
     if (!author) {
-      return res.status(404).send({ message: "Author không hợp lệ" });
+      return res.status(404).json({
+        success: false,
+        message: "Author not found"
+      });
     }
 
     const books = await bookSchema.find({
-      authorId: authorId,   // 🔥 đúng field
+      authorId: authorId,
       isDeleted: false
+    }).populate('categoryId', 'name');
+
+    return res.json({
+      success: true,
+      data: books
     });
 
-    res.send(books);
   } catch (error) {
-    res.status(500).send({ message: error.message });
+    return res.status(500).json({
+      success: false,
+      message: error.message
+    });
   }
 });
 
 
-// CREATE
-router.post("/", async (req, res) => {
+/**
+ * CREATE AUTHOR (ADMIN ONLY)
+ */
+router.post("/", CheckLogin, CheckRole(['admin']), async (req, res) => {
   try {
     const { name, bio } = req.body;
 
@@ -78,49 +114,93 @@ router.post("/", async (req, res) => {
 
     await newAuthor.save();
 
-    res.status(201).send(newAuthor);
+    return res.status(201).json({
+      success: true,
+      data: newAuthor
+    });
+
   } catch (error) {
-    res.status(400).send({ message: error.message });
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
   }
 });
 
 
-// UPDATE
-router.put("/:id", async (req, res) => {
+/**
+ * UPDATE AUTHOR (ADMIN ONLY)
+ */
+router.put("/:id", CheckLogin, CheckRole(['admin']), async (req, res) => {
   try {
-    const updated = await authorSchema.findOneAndUpdate(
-      { _id: req.params.id, isDeleted: false },
-      req.body,
-      { new: true, runValidators: true }
-    );
 
-    if (!updated) {
-      return res.status(404).send({ message: "Author không tồn tại" });
+    const author = await authorSchema.findOne({
+      _id: req.params.id,
+      isDeleted: false
+    });
+
+    if (!author) {
+      return res.status(404).json({
+        success: false,
+        message: "Author not found"
+      });
     }
 
-    res.send(updated);
+    // 🔥 chỉ cho update field an toàn
+    const allowedFields = ['name', 'bio'];
+
+    allowedFields.forEach(field => {
+      if (req.body[field] !== undefined) {
+        author[field] = req.body[field];
+      }
+    });
+
+    await author.save();
+
+    return res.json({
+      success: true,
+      data: author
+    });
+
   } catch (error) {
-    res.status(400).send({ message: error.message });
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
   }
 });
 
 
-// DELETE (soft delete)
-router.delete("/:id", async (req, res) => {
+/**
+ * DELETE AUTHOR (ADMIN ONLY - soft delete)
+ */
+router.delete("/:id", CheckLogin, CheckRole(['admin']), async (req, res) => {
   try {
-    const deleted = await authorSchema.findOneAndUpdate(
-      { _id: req.params.id, isDeleted: false },
-      { isDeleted: true },
-      { new: true }
-    );
+    const author = await authorSchema.findOne({
+      _id: req.params.id,
+      isDeleted: false
+    });
 
-    if (!deleted) {
-      return res.status(404).send({ message: "Author không tồn tại hoặc đã xóa" });
+    if (!author) {
+      return res.status(404).json({
+        success: false,
+        message: "Author not found"
+      });
     }
 
-    res.send({ message: "Xóa thành công", data: deleted });
+    author.isDeleted = true;
+    await author.save();
+
+    return res.json({
+      success: true,
+      message: "Deleted successfully"
+    });
+
   } catch (error) {
-    res.status(400).send({ message: error.message });
+    return res.status(400).json({
+      success: false,
+      message: error.message
+    });
   }
 });
 

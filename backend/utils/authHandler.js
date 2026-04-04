@@ -1,48 +1,72 @@
 let userController = require('../controllers/users')
 let jwt = require('jsonwebtoken')
-let fs = require('fs')
-module.exports = {
-    CheckLogin: async function (req, res, next) {
-        let key = req.headers.authorization;
-        if (!key) {
-            if (req.cookies.LOGIN_NNPTUD_S3) {
-                key = req.cookies.LOGIN_NNPTUD_S3;
-            } else {
-                res.status(404).send("ban chua dang nhap")
-                return;
-            }
 
+module.exports = {
+
+    // ===== CHECK LOGIN =====
+    CheckLogin: async function (req, res, next) {
+        let token = req.headers.authorization;
+
+        // lấy từ cookie nếu không có header
+        if (!token) {
+            token = req.cookies.LOGIN_NNPTUD_S3;
+        }
+
+        if (!token) {
+            return res.status(401).json({
+                success: false,
+                message: "Bạn chưa đăng nhập"
+            });
         }
 
         try {
+            let decoded = jwt.verify(token, process.env.JWT_SECRET || 'secretKey');
 
-            let result = jwt.verify(key, 'secretKey')
-            if (result.exp * 1000 < Date.now()) {
-                res.status(404).send("ban chua dang nhap")
-                return; s
-            }
-            let user = await userController.GetUserById(result.id);
+            let user = await userController.GetUserById(decoded.id);
+
             if (!user) {
-                res.status(404).send("ban chua dang nhap")
-                return;
+                return res.status(401).json({
+                    success: false,
+                    message: "User không tồn tại"
+                });
             }
+
+            // 🔥 QUAN TRỌNG: populate role
+            await user.populate('role');
+
             req.user = user;
             next();
-        } catch (error) {
-            res.status(404).send("ban chua dang nhap")
-            return;
-        }
 
+        } catch (error) {
+            return res.status(401).json({
+                success: false,
+                message: "Token không hợp lệ"
+            });
+        }
     },
-    CheckRole: function (requiredRole) {
+
+    // ===== CHECK ROLE =====
+    CheckRole: function (requiredRoles) {
         return function (req, res, next) {
-            let user = req.user;
-            let currentRole = user.role.name;
-            if (requiredRole.includes(currentRole)) {
-                next()
-            } else {
-                res.status(403).send("ban khong co quyen")
+
+            if (!req.user || !req.user.role) {
+                return res.status(401).json({
+                    success: false,
+                    message: "Unauthorized"
+                });
             }
+
+            let currentRole = req.user.role.name;
+
+            if (requiredRoles.includes(currentRole)) {
+                return next();
+            }
+
+            return res.status(403).json({
+                success: false,
+                message: "Bạn không có quyền"
+            });
         }
     }
+
 }

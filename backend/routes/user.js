@@ -44,26 +44,13 @@ router.get("/:id", CheckLogin, CheckRole("ADMIN"), async function (req, res) {
   }
 });
 
-// ================= CREATE =================
-
-
-router.post("/import", async function (req, res, next) {
-  try {
-    // file đặt cố định (demo)
-    let result = await importUsersFromExcel("user.xlsx");
-
-    res.send(result);
-  } catch (err) {
-    res.status(400).send({ message: err.message });
-  }
-});
 // ================= UPDATE =================
 router.put("/:id", async function (req, res) {
   try {
     let updatedItem = await userModel.findByIdAndUpdate(
       req.params.id,
       req.body,
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedItem) {
@@ -82,7 +69,7 @@ router.delete("/:id", async function (req, res) {
     let updatedItem = await userModel.findByIdAndUpdate(
       req.params.id,
       { isDeleted: true },
-      { new: true }
+      { returnDocument: 'after' }
     );
 
     if (!updatedItem) {

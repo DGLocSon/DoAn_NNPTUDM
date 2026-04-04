@@ -35,12 +35,12 @@ router.get("/book/:bookId", async (req, res) => {
 // UPDATE STOCK
 router.put("/:id", async (req, res) => {
   try {
+    console.log("Dữ liệu nhận được:", req.body);
     const item = await inventorySchema.findByIdAndUpdate(
       req.params.id,
       req.body,
       { new: true }
     );
-
     res.send(item);
   } catch (error) {
     res.status(400).send({ message: error.message });

@@ -1,71 +1,164 @@
 var express = require("express");
 var router = express.Router();
-let {CreateRoleValidator,validationResult} = require('../utils/validatorHandler')
 
-let roleModel = require("../schemas/roles");
+let { CreateRoleValidator, validationResult } = require('../utils/validatorHandler');
+let { CheckLogin, CheckRole } = require('../utils/authHandler');
 
+let roleModel = require("../schemas/roles"); 
 
-router.get("/", async function (req, res, next) {
-    let roles = await roleModel.find({ isDeleted: false });
-    res.send(roles);
-});
-
-
-router.get("/:id", async function (req, res, next) {
+/**
+ * GET ALL ROLES
+ */
+router.get("/", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
     try {
-        let result = await roleModel.find({ _id: req.params.id, isDeleted: false });
-        if (result.length > 0) {
-            res.send(result);
-        }
-        else {
-            res.status(404).send({ message: "id not found" });
-        }
-    } catch (error) {
-        res.status(404).send({ message: "id not found" });
-    }
-});
+        let roles = await roleModel.find({ isDeleted: false });
 
-
-router.post("/",CreateRoleValidator,validationResult, async function (req, res, next) {
-    try {
-        let newItem = new roleModel({
-            name: req.body.name,
-            description: req.body.description
+        return res.json({
+            success: true,
+            data: roles
         });
-        await newItem.save();
-        res.send(newItem);
+
     } catch (err) {
-        res.status(400).send({ message: err.message });
+        return res.status(500).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 
-router.put("/:id", async function (req, res, next) {
+
+/**
+ * GET ROLE BY ID
+ */
+router.get("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
     try {
-        let id = req.params.id;
-        let updatedItem = await roleModel.findByIdAndUpdate(id, req.body, { new: true });
-        if (!updatedItem) {
-            return res.status(404).send({ message: "id not found" });
+        let role = await roleModel.findOne({
+            _id: req.params.id,
+            isDeleted: false
+        });
+
+        if (!role) {
+            return res.status(404).json({
+                success: false,
+                message: "Role not found"
+            });
         }
-        res.send(updatedItem);
+
+        return res.json({
+            success: true,
+            data: role
+        });
+
     } catch (err) {
-        res.status(400).send({ message: err.message });
+        return res.status(400).json({
+            success: false,
+            message: "Invalid ID"
+        });
     }
 });
 
-router.delete("/:id", async function (req, res, next) {
+
+/**
+ * CREATE ROLE
+ */
+router.post("/", CheckLogin, CheckRole(["ADMIN"]), CreateRoleValidator, validationResult, async (req, res) => {
+        try {
+            // 🔥 tránh trùng name
+            let existed = await roleModel.findOne({
+                name: req.body.name
+            });
+
+            if (existed) {
+                return res.status(400).json({
+                    success: false,
+                    message: "Role already exists"
+                });
+            }
+
+            let newRole = new roleModel({
+                name: req.body.name,
+                description: req.body.description || ""
+            });
+
+            await newRole.save();
+
+            return res.status(201).json({
+                success: true,
+                data: newRole
+            });
+
+        } catch (err) {
+            return res.status(400).json({
+                success: false,
+                message: err.message
+            });
+        }
+    }
+);
+
+
+/**
+ * UPDATE ROLE
+ */
+router.put("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
     try {
-        let id = req.params.id;
-        let updatedItem = await roleModel.findByIdAndUpdate(
-            id,
+
+        let updated = await roleModel.findOneAndUpdate(
+            { _id: req.params.id, isDeleted: false },
+            req.body,
+            { new: true, runValidators: true }
+        );
+
+        if (!updated) {
+            return res.status(404).json({
+                success: false,
+                message: "Role not found"
+            });
+        }
+
+        return res.json({
+            success: true,
+            data: updated
+        });
+
+    } catch (err) {
+        return res.status(400).json({
+            success: false,
+            message: err.message
+        });
+    }
+});
+
+
+/**
+ * DELETE ROLE (SOFT DELETE)
+ */
+router.delete("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
+    try {
+
+        let deleted = await roleModel.findOneAndUpdate(
+            { _id: req.params.id, isDeleted: false },
             { isDeleted: true },
             { new: true }
         );
-        if (!updatedItem) {
-            return res.status(404).send({ message: "id not found" });
+
+        if (!deleted) {
+            return res.status(404).json({
+                success: false,
+                message: "Role not found"
+            });
         }
-        res.send(updatedItem);
+
+        return res.json({
+            success: true,
+            message: "Deleted successfully"
+        });
+
     } catch (err) {
-        res.status(400).send({ message: err.message });
+        return res.status(400).json({
+            success: false,
+            message: err.message
+        });
     }
 });
 
