@@ -5,7 +5,6 @@ let { CheckLogin } = require('../utils/authHandler');
 
 /**
  * [GET] Lấy danh sách địa chỉ của User
- * Sắp xếp: Địa chỉ mặc định lên đầu, sau đó đến mới nhất.
  */
 router.get('/', CheckLogin, async function (req, res) {
     try {
@@ -22,39 +21,29 @@ router.get('/', CheckLogin, async function (req, res) {
 
 /**
  * [POST] Thêm địa chỉ mới
- * Logic: Nếu là địa chỉ đầu tiên HOẶC người dùng chọn làm mặc định => Bỏ mặc định các cái cũ.
  */
 router.post('/', CheckLogin, async function (req, res) {
     try {
         let user = req.user;
-        let { fullName, phone, city, district, street, isDefault } = req.body;
+        let { fullName, phone, address, isDefault } = req.body;
 
-        if (!fullName || !phone || !city || !district || !street) {
-            return res.status(400).send({ message: "Vui lòng nhập đầy đủ thông tin địa chỉ" });
+        // Kiểm tra đầu vào tối giản
+        if (!fullName || !phone || !address) {
+            return res.status(400).send({ message: "Vui lòng nhập đầy đủ: Tên, SĐT và Địa chỉ" });
         }
 
-        // 1. Kiểm tra xem user đã có địa chỉ nào chưa
         const count = await addressSchema.countDocuments({ userId: user._id, isDeleted: false });
-
-        // 2. Xác định xem địa chỉ này có nên là mặc định không
-        // Nếu là cái đầu tiên thì ép buộc là true. Nếu không thì lấy theo ý người dùng.
         let shouldBeDefault = count === 0 ? true : (isDefault || false);
 
-        // 3. FIX: Nếu cái mới này là mặc định, hãy bỏ mặc định tất cả các cái cũ của user này
         if (shouldBeDefault === true) {
-            await addressSchema.updateMany(
-                { userId: user._id }, 
-                { isDefault: false }
-            );
+            await addressSchema.updateMany({ userId: user._id }, { isDefault: false });
         }
 
         let newAddress = new addressSchema({
             userId: user._id,
             fullName,
             phone,
-            city,
-            district,
-            street,
+            address, // Gán trực tiếp chuỗi địa chỉ
             isDefault: shouldBeDefault
         });
 
@@ -71,10 +60,10 @@ router.post('/', CheckLogin, async function (req, res) {
 router.put('/:id', CheckLogin, async function (req, res) {
     try {
         let user = req.user;
-        let { fullName, phone, city, district, street, isDefault } = req.body;
+        let { fullName, phone, address, isDefault } = req.body;
 
-        if (!fullName || !phone || !city || !district || !street) {
-            return res.status(400).send({ message: "Vui lòng nhập đầy đủ thông tin" });
+        if (!fullName || !phone || !address) {
+            return res.status(400).send({ message: "Vui lòng không để trống thông tin" });
         }
 
         let addressToUpdate = await addressSchema.findOne({
@@ -87,16 +76,13 @@ router.put('/:id', CheckLogin, async function (req, res) {
             return res.status(404).send({ message: "Không tìm thấy địa chỉ" });
         }
 
-        // FIX: Tương tự POST, nếu cập nhật cái này thành mặc định, bỏ các cái khác
         if (isDefault === true) {
             await addressSchema.updateMany({ userId: user._id }, { isDefault: false });
         }
 
         addressToUpdate.fullName = fullName;
         addressToUpdate.phone = phone;
-        addressToUpdate.city = city;
-        addressToUpdate.district = district;
-        addressToUpdate.street = street;
+        addressToUpdate.address = address; // Cập nhật địa chỉ mới
         addressToUpdate.isDefault = isDefault !== undefined ? isDefault : addressToUpdate.isDefault;
 
         await addressToUpdate.save();
@@ -118,14 +104,12 @@ router.delete('/:id', CheckLogin, async function (req, res) {
         });
 
         if (!address) {
-            return res.status(404).send({ message: "Address not found" });
+            return res.status(404).send({ message: "Địa chỉ không tồn tại" });
         }
 
         address.isDeleted = true;
-        // Nếu xóa đúng cái đang là mặc định, bạn có thể cần logic để set cái khác làm mặc định (tùy ý bạn)
-        
         await address.save();
-        res.send({ message: "Address deleted successfully" });
+        res.send({ message: "Xóa địa chỉ thành công" });
     } catch (error) {
         res.status(500).send({ success: false, message: error.message });
     }

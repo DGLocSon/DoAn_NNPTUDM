@@ -2,6 +2,7 @@ var express = require('express');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
 let mongoose = require('mongoose')
+var cors = require('cors');
 
 var indexRouter = require('./routes/index');
 
@@ -9,6 +10,11 @@ var app = express();
 
 // ===== MIDDLEWARE =====
 app.use(logger('dev'));
+app.use(cors({
+  origin: ['http://localhost:5173', 'http://localhost:3000'],
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
+  credentials: true
+}));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
