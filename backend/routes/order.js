@@ -1,199 +1,171 @@
-const express = require("express");
+const express = require('express');
 const router = express.Router();
-const mongoose = require("mongoose");
-const { CheckLogin, CheckRole } = require("../utils/authHandler");
-const orderModel = require("../schemas/order");
-const orderDetailModel = require("../schemas/order-detail");
-const bookModel = require("../schemas/book");
-const addressModel = require("../schemas/address");
-const inventoryModel = require("../schemas/inventory");
+const mongoose = require('mongoose');
 
-const isAdmin = (roleName) => ["admin"].includes(roleName);
+// Import tất cả các Schemas cần thiết
+const cartSchema = require('../schemas/cart');
+const cartItemSchema = require('../schemas/cart-item');
+const orderSchema = require('../schemas/order');
+const orderDetailSchema = require('../schemas/order-detail');
+const inventorySchema = require('../schemas/inventory');
+const paymentSchema = require('../schemas/payment');
+const shipmentSchema = require('../schemas/shipment');
+const addressSchema = require('../schemas/address');
 
-router.get("/", CheckLogin, async function (req, res) {
-  try {
-    const filter = { isDeleted: false };
-    if (!isAdmin(req.user.role.name)) {
-      filter.userId = req.user._id;
+const { CheckLogin } = require('../utils/authHandler');
+// Giả sử bạn có middleware CheckRole để chặn Admin
+// const { CheckRole } = require('../utils/roleHandler'); 
+
+/**
+ * ======================================================
+ * 1. [POST] CHECKOUT - Đặt hàng & Thanh toán
+ * ======================================================
+ */
+router.post('/checkout', CheckLogin, async (req, res) => {
+    const session = await mongoose.startSession();
+    session.startTransaction();
+
+    try {
+        const userId = req.user._id;
+        const { addressId, method } = req.body;
+
+        // 1. Kiểm tra địa chỉ hợp lệ
+        const address = await addressSchema.findOne({
+            _id: addressId,
+            userId: userId,
+            isDeleted: false
+        }).session(session);
+        if (!address) throw new Error("Địa chỉ giao hàng không hợp lệ!");
+
+        // 2. Tìm giỏ hàng hiện tại
+        let cart = await cartSchema.findOne({ userId: userId, isDeleted: false }).session(session);
+        if (!cart) throw new Error("Không tìm thấy giỏ hàng!");
+
+        let items = await cartItemSchema.find({ cartId: cart._id, isDeleted: false }).populate('bookId').session(session);
+        if (items.length === 0) throw new Error("Giỏ hàng của bạn đang trống!");
+
+        // 3. Khởi tạo Đơn hàng
+        let order = await orderSchema.create([{
+            userId: userId,
+            addressId: addressId,
+            totalAmount: 0 // Sẽ cập nhật sau khi tính toán
+        }], { session });
+        order = order[0];
+
+        let total = 0;
+
+        // 4. Duyệt từng món hàng: Check kho -> Trừ kho -> Tạo Order Detail
+        for (let item of items) {
+            let inventory = await inventorySchema.findOne({ bookId: item.bookId._id }).session(session);
+            
+            if (!inventory || inventory.stock < item.quantity) {
+                throw new Error(`Sản phẩm [${item.bookId.title}] đã hết hàng hoặc không đủ số lượng!`);
+            }
+
+            // Trừ kho & Tăng số lượng đã bán
+            inventory.stock -= item.quantity;
+            inventory.soldCount += item.quantity;
+            await inventory.save({ session });
+
+            // Tạo chi tiết đơn hàng (Lưu giá tại thời điểm mua)
+            await orderDetailSchema.create([{
+                orderId: order._id,
+                bookId: item.bookId._id,
+                quantity: item.quantity,
+                price: item.bookId.price
+            }], { session });
+
+            total += item.quantity * item.bookId.price;
+        }
+
+        // 5. Cập nhật tổng tiền đơn hàng
+        order.totalAmount = total;
+        await order.save({ session });
+
+        // 6. Tạo bản ghi Thanh toán & Vận chuyển
+        await paymentSchema.create([{
+            orderId: order._id,
+            method: method || "COD"
+        }], { session });
+
+        await shipmentSchema.create([{
+            orderId: order._id,
+            status: "processing"
+        }], { session });
+
+        // 7. Dọn dẹp giỏ hàng (Soft Delete)
+        await cartItemSchema.updateMany(
+            { cartId: cart._id },
+            { isDeleted: true },
+            { session }
+        );
+
+        await session.commitTransaction();
+        session.endSession();
+
+        res.status(201).json({ success: true, message: "Đặt hàng thành công!", data: order });
+
+    } catch (err) {
+        await session.abortTransaction();
+        session.endSession();
+        res.status(400).json({ success: false, message: err.message });
     }
-    const orders = await orderModel
-      .find(filter)
-      .populate("userId", "username email")
-      .populate("addressId");
-
-    res.send(orders);
-  } catch (err) {
-    res.status(500).send({ message: err.message });
-  }
 });
 
-router.get("/:id", CheckLogin, async function (req, res) {
-  try {
-    const order = await orderModel
-      .findOne({ _id: req.params.id, isDeleted: false })
-      .populate("userId", "username email")
-      .populate("addressId");
+/**
+ * ======================================================
+ * 2. [GET] Lấy danh sách đơn hàng (Dành cho User tự xem)
+ * ======================================================
+ */
+router.get('/', CheckLogin, async (req, res) => {
+    try {
+        let orders = await orderSchema.find({ userId: req.user._id })
+            .populate('addressId')
+            .sort({ createdAt: -1 });
 
-    if (!order) {
-      return res.status(404).send({ message: "Order not found" });
+        res.json({ success: true, data: orders });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    if (!isAdmin(req.user.role.name) && order.userId._id.toString() !== req.user._id.toString()) {
-      return res.status(403).send({ message: "Access denied" });
-    }
-
-    const items = await orderDetailModel
-      .find({ orderId: order._id, isDeleted: false })
-      .populate("bookId", "title price");
-
-    res.send({ order, items });
-  } catch (err) {
-    res.status(400).send({ message: err.message });
-  }
 });
 
-router.post("/", CheckLogin, async function (req, res) {
-  const { addressId, items } = req.body;
+/**
+ * ======================================================
+ * 3. [GET] CHI TIẾT ĐƠN HÀNG - Cho Admin hoặc User xem chi tiết
+ * ======================================================
+ */
+router.get('/:id', CheckLogin, async (req, res) => {
+    try {
+        const orderId = req.params.id;
 
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).send({ message: "Order items are required" });
-  }
+        // Lấy thông tin cơ bản của đơn hàng
+        const order = await orderSchema.findById(orderId).populate('addressId');
+        if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng!" });
 
-  const session = await mongoose.startSession();
-  session.startTransaction();
+        // Bảo mật: Nếu không phải Admin thì chỉ được xem đơn hàng của chính mình
+        // if (req.user.role !== 'admin' && order.userId.toString() !== req.user._id.toString()) {
+        //     return res.status(403).json({ message: "Bạn không có quyền xem đơn hàng này!" });
+        // }
 
-  try {
-    const address = await addressModel.findOne({
-      _id: addressId,
-      userId: req.user._id,
-      isDeleted: false
-    }).session(session);
+        // Lấy đồng thời các thông tin liên quan để tối ưu tốc độ
+        const [details, payment, shipment] = await Promise.all([
+            orderDetailSchema.find({ orderId }).populate('bookId'),
+            paymentSchema.findOne({ orderId }),
+            shipmentSchema.findOne({ orderId })
+        ]);
 
-    if (!address) {
-      throw new Error("Invalid address");
+        res.json({
+            success: true,
+            data: {
+                orderInfo: order,
+                items: details,
+                payment,
+                shipment
+            }
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
     }
-
-    const order = new orderModel({
-      userId: req.user._id,
-      addressId,
-      totalAmount: 0,
-      status: "pending"
-    });
-
-    await order.save({ session });
-
-    let totalAmount = 0;
-    for (const item of items) {
-      const quantity = Number(item.quantity);
-      if (!item.bookId || quantity <= 0) {
-        throw new Error("Invalid order item");
-      }
-
-      const book = await bookModel.findOne({ _id: item.bookId, isDeleted: false }).session(session);
-      if (!book) {
-        throw new Error("Book not found");
-      }
-
-      const inventory = await inventoryModel.findOne({ bookId: book._id, isDeleted: false }).session(session);
-      if (!inventory || inventory.stock < quantity) {
-        throw new Error(`Insufficient stock for ${book.title}`);
-      }
-
-      inventory.stock -= quantity;
-      inventory.soldCount += quantity;
-      await inventory.save({ session });
-
-      const detail = new orderDetailModel({
-        orderId: order._id,
-        bookId: book._id,
-        quantity,
-        price: book.price
-      });
-      await detail.save({ session });
-
-      totalAmount += book.price * quantity;
-    }
-
-    order.totalAmount = totalAmount;
-    await order.save({ session });
-
-    await session.commitTransaction();
-    session.endSession();
-
-    const savedOrder = await orderModel
-      .findById(order._id)
-      .populate("addressId")
-      .populate("userId", "username email");
-
-    const savedItems = await orderDetailModel
-      .find({ orderId: order._id, isDeleted: false })
-      .populate("bookId", "title price");
-
-    res.status(201).send({ order: savedOrder, items: savedItems });
-  } catch (err) {
-    await session.abortTransaction();
-    session.endSession();
-    res.status(400).send({ message: err.message });
-  }
-});
-
-router.put("/:id", CheckLogin, async function (req, res) {
-  try {
-    const order = await orderModel.findOne({ _id: req.params.id, isDeleted: false });
-    if (!order) {
-      return res.status(404).send({ message: "Order not found" });
-    }
-
-    const isAdmin = isAdmin(req.user.role.name);
-    if (!isAdmin && order.userId.toString() !== req.user._id.toString()) {
-      return res.status(403).send({ message: "Access denied" });
-    }
-
-    const updates = {};
-    if (req.body.addressId) {
-      if (!isAdmin && order.status !== "pending") {
-        return res.status(400).send({ message: "Address can only be updated while order is pending" });
-      }
-      updates.addressId = req.body.addressId;
-    }
-
-    if (req.body.status) {
-      if (!isAdmin && req.body.status !== "cancelled") {
-        return res.status(403).send({ message: "Only admin can change order status" });
-      }
-      updates.status = req.body.status;
-    }
-
-    if (Object.keys(updates).length === 0) {
-      return res.status(400).send({ message: "No valid update fields" });
-    }
-
-    const updatedOrder = await orderModel.findByIdAndUpdate(req.params.id, updates, { new: true });
-    res.send(updatedOrder);
-  } catch (err) {
-    res.status(400).send({ message: err.message });
-  }
-});
-
-router.delete("/:id", CheckLogin, async function (req, res) {
-  try {
-    const order = await orderModel.findOne({ _id: req.params.id, isDeleted: false });
-    if (!order) {
-      return res.status(404).send({ message: "Order not found" });
-    }
-
-    const isAdmin = isAdmin(req.user.role.name);
-    if (!isAdmin && order.userId.toString() !== req.user._id.toString()) {
-      return res.status(403).send({ message: "Access denied" });
-    }
-
-    order.isDeleted = true;
-    await order.save();
-
-    res.send({ message: "Order deleted" });
-  } catch (err) {
-    res.status(400).send({ message: err.message });
-  }
 });
 
 module.exports = router;
