@@ -1,0 +1,3 @@
+[submodule "FE_NNPTUDM"]
+	path = FE_NNPTUDM
+	url = https://github.com/PhongPhan233/FE_NNPTUDM.git
