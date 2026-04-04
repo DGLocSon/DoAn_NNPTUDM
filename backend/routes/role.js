@@ -9,7 +9,7 @@ let roleModel = require("../schemas/roles");
 /**
  * GET ALL ROLES
  */
-router.get("/", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
+router.get("/", CheckLogin, CheckRole(["admin"]), async (req, res) => {
     try {
         let roles = await roleModel.find({ isDeleted: false });
 
@@ -30,7 +30,7 @@ router.get("/", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
 /**
  * GET ROLE BY ID
  */
-router.get("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
+router.get("/:id", CheckLogin, CheckRole(["admin"]), async (req, res) => {
     try {
         let role = await roleModel.findOne({
             _id: req.params.id,
@@ -61,7 +61,7 @@ router.get("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
 /**
  * CREATE ROLE
  */
-router.post("/", CheckLogin, CheckRole(["ADMIN"]), CreateRoleValidator, validationResult, async (req, res) => {
+router.post("/", CheckLogin, CheckRole(["admin"]), CreateRoleValidator, validationResult, async (req, res) => {
         try {
             // 🔥 tránh trùng name
             let existed = await roleModel.findOne({
@@ -100,7 +100,7 @@ router.post("/", CheckLogin, CheckRole(["ADMIN"]), CreateRoleValidator, validati
 /**
  * UPDATE ROLE
  */
-router.put("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
+router.put("/:id", CheckLogin, CheckRole(["admin"]), async (req, res) => {
     try {
 
         let updated = await roleModel.findOneAndUpdate(
@@ -133,7 +133,7 @@ router.put("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
 /**
  * DELETE ROLE (SOFT DELETE)
  */
-router.delete("/:id", CheckLogin, CheckRole(["ADMIN"]), async (req, res) => {
+router.delete("/:id", CheckLogin, CheckRole(["admin"]), async (req, res) => {
     try {
 
         let deleted = await roleModel.findOneAndUpdate(
