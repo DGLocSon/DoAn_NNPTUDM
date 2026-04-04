@@ -1,7 +1,9 @@
 var express = require('express');
 var cookieParser = require('cookie-parser');
 var logger = require('morgan');
-let mongoose = require('mongoose');
+let mongoose = require('mongoose')
+
+var indexRouter = require('./routes/index');
 
 var app = express();
 
@@ -11,10 +13,8 @@ app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 
-// ===== API ROUTES =====
 app.use('/api/v1', require('./routes'));
 
-// ===== CONNECT DB =====
 mongoose.connect('mongodb://localhost:27017/bookstore');
 
 mongoose.connection.on('connected', function () {

@@ -1,196 +1,162 @@
-const express = require('express');
-let router = express.Router();
+var express = require("express");
+var router = express.Router();
+let { CheckLogin } = require('../utils/authHandler')
+let cartSchema = require('../schemas/carts')
+let inventorySchema = require('../schemas/inventories')
 
-let cartSchema = require('../schemas/cart');
-let cartItemSchema = require('../schemas/cart-item');
-let inventorySchema = require('../schemas/inventory');
+router.get('/', CheckLogin, async function (req, res, next) {
+    let user = req.user;
+    let cart = await cartSchema.findOne({
+        user: user._id
+    })
+    res.send(cart)
+})
+router.post('/add', CheckLogin, async function (req, res, next) {
+    let user = req.user;
+    let productId = req.body.product;
 
-let { CheckLogin } = require('../utils/authHandler');
-
-/**
- * GET CART
- */
-router.get('/', CheckLogin, async (req, res) => {
-    try {
-        let cart = await cartSchema.findOne({
-            userId: req.user._id,
-            isDeleted: false
+    let cart = await cartSchema.findOne({
+        user: user._id
+    })
+    let product = await inventorySchema.findOne({
+        product: productId
+    })
+    if (!product) {
+        res.status(404).send({
+            message: "san pham khong ton tai"
         });
-
-        if (!cart) {
-            cart = await cartSchema.create({ userId: req.user._id });
-        }
-
-        let items = await cartItemSchema.find({
-            cartId: cart._id,
-            isDeleted: false
-        }).populate('bookId');
-
-        return res.json({
-            success: true,
-            data: items
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return;
     }
-});
-
-
-/**
- * ADD TO CART
- */
-router.post('/add', CheckLogin, async (req, res) => {
-    try {
-        let { bookId, quantity } = req.body;
-
-        if (!quantity || quantity <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Quantity must be > 0"
+    let stock = product.stock;
+    let index = cart.products.findIndex(
+        function (e) {
+            return e.product == productId
+        })
+    if (index == -1) {
+        if (stock < 1) {
+            res.status(404).send({
+                message: "san pham trong kho khong du"
             });
+            return;
         }
-
-        // 🔥 check inventory
-        let inventory = await inventorySchema.findOne({ bookId });
-        if (!inventory || inventory.stock < quantity) {
-            return res.status(400).json({
-                success: false,
-                message: "Not enough stock"
+        cart.products.push({
+            product: productId,
+            quantity: 1
+        })
+    } else {
+        if (stock - cart.products[index].quantity < 1) {
+            res.status(404).send({
+                message: "san pham trong kho khong du"
             });
+            return;
         }
-
-        let cart = await cartSchema.findOne({
-            userId: req.user._id,
-            isDeleted: false
+        cart.products[index].quantity++
+    }
+    await cart.save();
+    res.send(cart)
+})
+router.post('/remove', CheckLogin, async function (req, res, next) {
+    let user = req.user;
+    let productId = req.body.product;
+    let cart = await cartSchema.findOne({
+        user: user._id
+    })
+    let product = await inventorySchema.findOne({
+        product: productId
+    })
+    if (!product) {
+        res.status(404).send({
+            message: "san pham khong ton tai"
         });
-
-        if (!cart) {
-            cart = await cartSchema.create({ userId: req.user._id });
-        }
-
-        let item = await cartItemSchema.findOne({
-            cartId: cart._id,
-            bookId,
-            isDeleted: false
+        return;
+    }
+    let index = cart.products.findIndex(
+        function (e) {
+            return e.product == productId
+        })
+    if (index == -1) {
+        res.status(404).send({
+            message: "san pham khong ton tai"
         });
-
-        if (item) {
-            item.quantity += quantity;
-            await item.save();
+        return;
+    } else {
+        cart.products.splice(index, 1)
+    }
+    await cart.save();
+    res.send(cart)
+})
+router.post('/decrease', CheckLogin, async function (req, res, next) {
+    let user = req.user;
+    let productId = req.body.product;
+    let cart = await cartSchema.findOne({
+        user: user._id
+    })
+    let product = await inventorySchema.findOne({
+        product: productId
+    })
+    if (!product) {
+        res.status(404).send({
+            message: "san pham khong ton tai"
+        });
+        return;
+    }
+    let index = cart.products.findIndex(
+        function (e) {
+            return e.product == productId
+        })
+    if (index == -1) {
+        res.status(404).send({
+            message: "san pham khong ton tai"
+        });
+        return;
+    } else {
+        if (cart.products[index].quantity == 1) {
+            cart.products.splice(index, 1);
         } else {
-            item = await cartItemSchema.create({
-                cartId: cart._id,
-                bookId,
-                quantity
-            });
+            cart.products[index].quantity -= 1;
         }
-
-        return res.json({
-            success: true,
-            message: "Added to cart",
-            data: item
-        });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
     }
-});
+    await cart.save();
+    res.send(cart)
+})
 
+router.post('/modify', CheckLogin, async function (req, res, next) {
+    let user = req.user;
+    let productId = req.body.product;
+    let quantity = req.body.quantity;
 
-/**
- * UPDATE CART ITEM
- */
-router.put('/update/:id', CheckLogin, async (req, res) => {
-    try {
-        let { quantity } = req.body;
-
-        if (!quantity || quantity <= 0) {
-            return res.status(400).json({
-                success: false,
-                message: "Quantity must be > 0"
-            });
-        }
-
-        let item = await cartItemSchema.findById(req.params.id);
-
-        if (!item) {
-            return res.status(404).json({
-                success: false,
-                message: "Item not found"
-            });
-        }
-
-        // 🔥 check owner
-        let cart = await cartSchema.findById(item.cartId);
-        if (cart.userId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: "Forbidden"
-            });
-        }
-
-        item.quantity = quantity;
-        await item.save();
-
-        return res.json({
-            success: true,
-            message: "Updated",
-            data: item
+    let cart = await cartSchema.findOne({
+        user: user._id
+    })
+    let product = await inventorySchema.findOne({
+        product: productId
+    })
+    if (!product) {
+        res.status(404).send({
+            message: "san pham khong ton tai"
         });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return;
     }
-});
-
-
-/**
- * REMOVE ITEM (soft delete)
- */
-router.delete('/remove/:id', CheckLogin, async (req, res) => {
-    try {
-        let item = await cartItemSchema.findById(req.params.id);
-
-        if (!item) {
-            return res.status(404).json({
-                success: false,
-                message: "Item not found"
-            });
-        }
-
-        // 🔥 check owner
-        let cart = await cartSchema.findById(item.cartId);
-        if (cart.userId.toString() !== req.user._id.toString()) {
-            return res.status(403).json({
-                success: false,
-                message: "Forbidden"
-            });
-        }
-
-        item.isDeleted = true;
-        await item.save();
-
-        return res.json({
-            success: true,
-            message: "Removed from cart"
+    let stock = product.stock;
+    let index = cart.products.findIndex(
+        function (e) {
+            return e.product == productId
+        })
+    if (index == -1) {
+        res.status(404).send({
+            message: "san pham khong ton tai trong gio hang"
         });
-
-    } catch (error) {
-        return res.status(500).json({
-            success: false,
-            message: error.message
-        });
+        return;
+    } else {
+        if (stock - quantity < 0) {
+            res.status(404).send({
+                message: "san pham trong kho khong du"
+            });
+            return;
+        }
+        cart.products[index].quantity = quantity
     }
-});
-
+    await cart.save();
+    res.send(cart)
+})
 module.exports = router;

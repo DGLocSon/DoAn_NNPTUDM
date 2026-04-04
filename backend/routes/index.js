@@ -18,11 +18,11 @@ router.use("/carts", require("./cart"));
 router.use("/orders", require("./order"));
 
 // PAYMENT + SHIPMENT
-// router.use("/payments", require("./payment"));
-// router.use("/shipments", require("./shipment"));
+router.use("/payments", require("./payment"));
+router.use("/shipments", require("./shipment"));
 
 // ADDRESS + INVENTORY
-// router.use("/addresses", require("./address"));
+router.use("/addresses", require("./address"));
 router.use("/inventories", require("./inventory"));
 
 module.exports = router;
