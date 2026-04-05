@@ -2,7 +2,7 @@ let userModel = require("../schemas/users");
 let bcrypt = require('bcrypt');
 
 module.exports = {
-    CreateAnUser: async function (username, password, email, role,session,
+    CreateAnUser: async function (username, password, email, role, session,
         fullName, avatarUrl, status, loginCount
     ) {
         let newUser = new userModel({
@@ -15,7 +15,7 @@ module.exports = {
             role: role,
             loginCount: loginCount
         })
-        await newUser.save({session});
+        await newUser.save({ session });
         return newUser;
     },
     FindUserByUsername: async function (username) {
@@ -30,11 +30,11 @@ module.exports = {
         })
     },
     FindUserByToken: async function (token) {
-        let result =  await userModel.findOne({
+        let result = await userModel.findOne({
             isDeleted: false,
             forgotPasswordToken: token
         })
-        if(result.forgotPasswordTokenExp>Date.now()){
+        if (result && result.forgotPasswordTokenExp > Date.now()) {
             return result;
         }
         return false
