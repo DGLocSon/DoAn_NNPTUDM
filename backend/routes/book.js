@@ -14,12 +14,27 @@ router.get('/', async (req, res) => {
     try {
         let minQ = req.query.min ? Number(req.query.min) : 0;
 
-        let result = await bookSchema.find({
+        let filter = {
             isDeleted: false,
             price: { $gte: minQ }
-        })
-        .populate('categoryId', 'name')
-        .populate('authorId', 'name');
+        };
+
+        if (req.query.categoryId && mongoose.Types.ObjectId.isValid(req.query.categoryId)) {
+            filter.categoryId = req.query.categoryId;
+        }
+
+        let query = bookSchema.find(filter)
+            .populate('categoryId', 'name')
+            .populate('authorId', 'name');
+
+        if (req.query.limit) {
+            let lim = parseInt(req.query.limit, 10);
+            if (!Number.isNaN(lim) && lim > 0) {
+                query = query.limit(Math.min(lim, 200));
+            }
+        }
+
+        let result = await query;
 
         return res.json({
             success: true,
