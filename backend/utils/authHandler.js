@@ -7,6 +7,11 @@ module.exports = {
     CheckLogin: async function (req, res, next) {
         let token = req.headers.authorization;
 
+        // Nếu có header Authorization và bắt đầu bằng "Bearer "
+        if (token && token.startsWith('Bearer ')) {
+            token = token.split(' ')[1];
+        }
+
         // lấy từ cookie nếu không có header
         if (!token) {
             token = req.cookies.LOGIN_NNPTUD_S3;

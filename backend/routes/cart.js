@@ -24,7 +24,10 @@ router.get('/', CheckLogin, async (req, res) => {
         let items = await cartItemSchema.find({
             cartId: cart._id,
             isDeleted: false
-        }).populate('bookId');
+        }).populate({
+            path: 'bookId',
+            populate: { path: 'authorId', select: 'name' }
+        });
 
         return res.json({
             success: true,

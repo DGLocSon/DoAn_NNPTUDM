@@ -39,7 +39,11 @@ router.post('/register', RegisterValidator, validationResult, async (req, res) =
             req.body.username,
             req.body.password,
             req.body.email,
-            roleId
+            roleId,
+            null, // session
+            req.body.username, // fullName mặc định
+            undefined, // avatarUrl
+            true // status
         );
 
         return res.status(201).json({
@@ -58,39 +62,41 @@ router.post('/register', RegisterValidator, validationResult, async (req, res) =
 // ================= LOGIN =================
 router.post('/login', async function (req, res) {
     try {
-        let { username, password } = req.body;
+        let { email, password } = req.body;
 
-        // 1. Tìm user và POPULATE trường roleId để lấy thông tin bảng Role
-        // Giả sử field trong User schema tên là roleId
-        let result = await userSchema.findOne({ username, isDeleted: false }).populate('role');
+        // 1. Tìm user bằng EMAIL (thay vì username)
+        let result = await userSchema.findOne({ email, isDeleted: false }).populate('role');
 
-        if (!result) return res.status(403).json({ message: "Sai thông tin đăng nhập" });
+        if (!result) return res.status(403).json({ success: false, message: "Sai thông tin đăng nhập" });
 
-        // ... các bước kiểm tra lockTime và password (giữ nguyên) ...
+        // 2. Kiểm tra mật khẩu
+        const isMatch = bcrypt.compareSync(password, result.password);
+        if (!isMatch) return res.status(403).json({ success: false, message: "Sai thông tin đăng nhập" });
 
-        // 2. Thêm TÊN quyền vào JWT để dễ kiểm tra ở Middleware
+        // 3. Tạo JWT
         let token = jwt.sign(
             { 
                 id: result._id, 
-                role: result.role.name // Lấy 'admin' hoặc 'user' từ bảng Roles
+                role: result.role?.name || 'user'
             },
-            'secretKey',
+            process.env.JWT_SECRET || 'secretKey',
             { expiresIn: '1d' }
         );
 
-        // 3. Trả về cho Frontend
+        // 4. Trả về cho Frontend
         res.status(200).json({
             success: true,
             token: token,
             user: {
                 id: result._id,
-                fullName: result.fullName,
-                roleName: result.role.name // Trả về 'admin' để Frontend dễ check
+                username: result.username,
+                email: result.email,
+                roleName: result.role?.name || 'user'
             }
         });
 
     } catch (err) {
-        res.status(500).json({ message: err.message });
+        res.status(500).json({ success: false, message: err.message });
     }
 });
 // ================= ME =================

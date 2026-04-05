@@ -27,20 +27,23 @@ router.get("/", CheckLogin, CheckRole("ADMIN", "MODERATOR"), async function (req
 
 
 // ================= GET BY ID =================
-router.get("/:id", CheckLogin, CheckRole("ADMIN"), async function (req, res) {
+router.get("/:id", CheckLogin, async function (req, res) {
   try {
-    let result = await userModel.find({
+    let result = await userModel.findOne({
       _id: req.params.id,
       isDeleted: false
-    });
+    }).populate('role', 'name');
 
-    if (result.length > 0) {
-      res.send(result);
+    if (result) {
+      res.json({
+        success: true,
+        data: result
+      });
     } else {
-      res.status(404).send({ message: "id not found" });
+      res.status(404).json({ success: false, message: "id not found" });
     }
   } catch (error) {
-    res.status(404).send({ message: "id not found" });
+    res.status(404).json({ success: false, message: "id not found" });
   }
 });
 

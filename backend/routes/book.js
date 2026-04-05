@@ -17,7 +17,9 @@ router.get('/', async (req, res) => {
         let result = await bookSchema.find({
             isDeleted: false,
             price: { $gte: minQ }
-        }).populate('categoryId', 'name');
+        })
+        .populate('categoryId', 'name')
+        .populate('authorId', 'name');
 
         return res.json({
             success: true,
@@ -40,7 +42,9 @@ router.get('/:id', async (req, res) => {
         let result = await bookSchema.findOne({
             isDeleted: false,
             _id: req.params.id
-        }).populate('categoryId', 'name');
+        })
+        .populate('categoryId', 'name')
+        .populate('authorId', 'name');
 
         if (!result) {
             return res.status(404).json({
