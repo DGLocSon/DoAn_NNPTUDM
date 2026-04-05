@@ -36,6 +36,14 @@ module.exports = {
                 });
             }
 
+            // 🔥 Kiểm tra nếu user bị khóa (status: false)
+            if (!user.status) {
+                return res.status(403).json({
+                    success: false,
+                    message: "Tài khoản của bạn đã bị khóa."
+                });
+            }
+
             // 🔥 QUAN TRỌNG: populate role
             await user.populate('role');
 
@@ -51,7 +59,7 @@ module.exports = {
     },
 
     // ===== CHECK ROLE =====
-    CheckRole: function (requiredRoles) {
+    CheckRole: function (...requiredRoles) {
         return function (req, res, next) {
 
             if (!req.user || !req.user.role) {

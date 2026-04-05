@@ -25,7 +25,8 @@ router.get('/', async (req, res) => {
 
         let query = bookSchema.find(filter)
             .populate('categoryId', 'name')
-            .populate('authorId', 'name');
+            .populate('authorId', 'name')
+            .populate('inventory', 'stock');
 
         if (req.query.limit) {
             let lim = parseInt(req.query.limit, 10);
@@ -59,7 +60,8 @@ router.get('/:id', async (req, res) => {
             _id: req.params.id
         })
         .populate('categoryId', 'name')
-        .populate('authorId', 'name');
+        .populate('authorId', 'name')
+        .populate('inventory', 'stock');
 
         if (!result) {
             return res.status(404).json({

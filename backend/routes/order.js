@@ -16,47 +16,33 @@ const { CheckLogin } = require('../utils/authHandler');
 // Giả sử bạn có middleware CheckRole để chặn Admin
 // const { CheckRole } = require('../utils/roleHandler'); 
 
-/**
- * ======================================================
- * 1. [POST] CHECKOUT - Đặt hàng & Thanh toán
- * ======================================================
- */
-router.post('/checkout', CheckLogin, async (req, res) => {
-    const session = await mongoose.startSession();
-    session.startTransaction();
 
+router.post('/checkout', CheckLogin, async (req, res) => {
     try {
         const userId = req.user._id;
-        const { addressId, method } = req.body;
+        const { shippingAddress, phone, customerName, method } = req.body;
 
-        // 1. Kiểm tra địa chỉ hợp lệ
-        const address = await addressSchema.findOne({
-            _id: addressId,
-            userId: userId,
-            isDeleted: false
-        }).session(session);
-        if (!address) throw new Error("Địa chỉ giao hàng không hợp lệ!");
-
-        // 2. Tìm giỏ hàng hiện tại
-        let cart = await cartSchema.findOne({ userId: userId, isDeleted: false }).session(session);
+        // 1. Tìm giỏ hàng hiện tại
+        let cart = await cartSchema.findOne({ userId: userId, isDeleted: false });
         if (!cart) throw new Error("Không tìm thấy giỏ hàng!");
 
-        let items = await cartItemSchema.find({ cartId: cart._id, isDeleted: false }).populate('bookId').session(session);
+        let items = await cartItemSchema.find({ cartId: cart._id, isDeleted: false }).populate('bookId');
         if (items.length === 0) throw new Error("Giỏ hàng của bạn đang trống!");
 
-        // 3. Khởi tạo Đơn hàng
-        let order = await orderSchema.create([{
+        // 2. Khởi tạo Đơn hàng
+        let order = await orderSchema.create({
             userId: userId,
-            addressId: addressId,
-            totalAmount: 0 // Sẽ cập nhật sau khi tính toán
-        }], { session });
-        order = order[0];
+            shippingAddress: shippingAddress,
+            phone: phone,
+            customerName: customerName,
+            totalAmount: 0 
+        });
 
         let total = 0;
 
         // 4. Duyệt từng món hàng: Check kho -> Trừ kho -> Tạo Order Detail
         for (let item of items) {
-            let inventory = await inventorySchema.findOne({ bookId: item.bookId._id }).session(session);
+            let inventory = await inventorySchema.findOne({ bookId: item.bookId._id });
             
             if (!inventory || inventory.stock < item.quantity) {
                 throw new Error(`Sản phẩm [${item.bookId.title}] đã hết hàng hoặc không đủ số lượng!`);
@@ -65,62 +51,64 @@ router.post('/checkout', CheckLogin, async (req, res) => {
             // Trừ kho & Tăng số lượng đã bán
             inventory.stock -= item.quantity;
             inventory.soldCount += item.quantity;
-            await inventory.save({ session });
+            await inventory.save();
 
             // Tạo chi tiết đơn hàng (Lưu giá tại thời điểm mua)
-            await orderDetailSchema.create([{
+            await orderDetailSchema.create({
                 orderId: order._id,
                 bookId: item.bookId._id,
                 quantity: item.quantity,
                 price: item.bookId.price
-            }], { session });
+            });
 
             total += item.quantity * item.bookId.price;
         }
 
         // 5. Cập nhật tổng tiền đơn hàng
         order.totalAmount = total;
-        await order.save({ session });
+        await order.save();
 
         // 6. Tạo bản ghi Thanh toán & Vận chuyển
-        await paymentSchema.create([{
+        await paymentSchema.create({
             orderId: order._id,
             method: method || "COD"
-        }], { session });
+        });
 
-        await shipmentSchema.create([{
+        await shipmentSchema.create({
             orderId: order._id,
             status: "processing"
-        }], { session });
+        });
 
         // 7. Dọn dẹp giỏ hàng (Soft Delete)
         await cartItemSchema.updateMany(
             { cartId: cart._id },
-            { isDeleted: true },
-            { session }
+            { isDeleted: true }
         );
-
-        await session.commitTransaction();
-        session.endSession();
 
         res.status(201).json({ success: true, message: "Đặt hàng thành công!", data: order });
 
     } catch (err) {
-        await session.abortTransaction();
-        session.endSession();
         res.status(400).json({ success: false, message: err.message });
     }
 });
 
-/**
- * ======================================================
- * 2. [GET] Lấy danh sách đơn hàng (Dành cho User tự xem)
- * ======================================================
- */
+
 router.get('/', CheckLogin, async (req, res) => {
     try {
-        let orders = await orderSchema.find({ userId: req.user._id })
-            .populate('addressId')
+        let filter = {};
+        
+        // Nếu không phải admin, chỉ cho xem đơn hàng của chính mình
+        await req.user.populate('role');
+        const roleName = req.user.role?.name?.toUpperCase();
+        
+        if (roleName !== 'ADMIN') {
+            filter.userId = req.user._id;
+        } else if (req.query.userId) {
+            filter.userId = req.query.userId;
+        }
+
+        let orders = await orderSchema.find(filter)
+            .populate('userId', 'username email') // Populate thêm thông tin user cho admin
             .sort({ createdAt: -1 });
 
         res.json({ success: true, data: orders });
@@ -129,17 +117,13 @@ router.get('/', CheckLogin, async (req, res) => {
     }
 });
 
-/**
- * ======================================================
- * 3. [GET] CHI TIẾT ĐƠN HÀNG - Cho Admin hoặc User xem chi tiết
- * ======================================================
- */
+
 router.get('/:id', CheckLogin, async (req, res) => {
     try {
         const orderId = req.params.id;
 
-        // Lấy thông tin cơ bản của đơn hàng
-        const order = await orderSchema.findById(orderId).populate('addressId');
+        // Lấy thông tin cơ bản của đơn hàng (Không populate addressId nữa)
+        const order = await orderSchema.findById(orderId);
         if (!order) return res.status(404).json({ message: "Không tìm thấy đơn hàng!" });
 
         // Bảo mật: Nếu không phải Admin thì chỉ được xem đơn hàng của chính mình

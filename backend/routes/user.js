@@ -14,19 +14,19 @@ let roleModel = require("../schemas/roles");
 
 
 
-// ================= GET ALL =================
-router.get("/", CheckLogin, CheckRole("ADMIN", "MODERATOR"), async function (req, res) {
+
+router.get("/", CheckLogin, CheckRole("admin", "ADMIN", "MODERATOR"), async function (req, res) {
   let users = await userModel
     .find({ isDeleted: false })
-    .populate({
-      path: 'role',
-      select: 'name'
-    });
-  res.send(users);
+    .populate('role', 'name');
+  res.json({
+    success: true,
+    data: users
+  });
 });
 
 
-// ================= GET BY ID =================
+
 router.get("/:id", CheckLogin, async function (req, res) {
   try {
     let result = await userModel.findOne({
@@ -47,11 +47,23 @@ router.get("/:id", CheckLogin, async function (req, res) {
   }
 });
 
-// ================= UPDATE =================
-router.put("/:id", async function (req, res) {
+
+
+router.put("/:id", CheckLogin, CheckRole("admin", "ADMIN"), async function (req, res) {
   try {
+    const userId = req.params.id;
+    const targetUser = await userModel.findById(userId).populate('role');
+
+    // 🔥 Ngăn chặn khóa tài khoản ADMIN
+    if (targetUser && (targetUser.role?.name?.toUpperCase() === 'ADMIN') && req.body.status === false) {
+        return res.status(400).json({ 
+            success: false, 
+            message: "Không thể khóa tài khoản có quyền Admin!" 
+        });
+    }
+
     let updatedItem = await userModel.findByIdAndUpdate(
-      req.params.id,
+      userId,
       req.body,
       { returnDocument: 'after' }
     );
@@ -60,13 +72,16 @@ router.put("/:id", async function (req, res) {
       return res.status(404).send({ message: "id not found" });
     }
 
-    res.send(updatedItem);
+    res.json({
+        success: true,
+        data: updatedItem
+    });
   } catch (err) {
     res.status(400).send({ message: err.message });
   }
 });
 
-// ================= DELETE =================
+
 router.delete("/:id", async function (req, res) {
   try {
     let updatedItem = await userModel.findByIdAndUpdate(

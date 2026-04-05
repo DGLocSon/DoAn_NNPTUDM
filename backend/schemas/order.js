@@ -2,7 +2,9 @@ const mongoose = require("mongoose");
 
 const orderSchema = new mongoose.Schema({
   userId: { type: mongoose.Schema.Types.ObjectId, ref: "user" },
-  addressId: { type: mongoose.Schema.Types.ObjectId, ref: "address" },
+  shippingAddress: { type: String, required: true },
+  phone: { type: String, required: true },
+  customerName: { type: String, required: true },
   totalAmount: { type: Number, default: 0 },
   status: {
     type: String,

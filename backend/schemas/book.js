@@ -8,6 +8,17 @@ const bookSchema = new mongoose.Schema({
   description: { type: String, default: "" },
   image: { type: String, default: "" },
   isDeleted: { type: Boolean, default: false }
-}, { timestamps: true });
+}, { 
+  timestamps: true,
+  toJSON: { virtuals: true },
+  toObject: { virtuals: true }
+});
+
+bookSchema.virtual('inventory', {
+  ref: 'inventory',
+  localField: '_id',
+  foreignField: 'bookId',
+  justOne: true
+});
 
 module.exports = mongoose.model("book", bookSchema);

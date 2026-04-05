@@ -26,7 +26,10 @@ router.get('/', CheckLogin, async (req, res) => {
             isDeleted: false
         }).populate({
             path: 'bookId',
-            populate: { path: 'authorId', select: 'name' }
+            populate: [
+                { path: 'authorId', select: 'name' },
+                { path: 'inventory', select: 'stock' }
+            ]
         });
 
         return res.json({
@@ -59,10 +62,19 @@ router.post('/add', CheckLogin, async (req, res) => {
 
         // 🔥 check inventory
         let inventory = await inventorySchema.findOne({ bookId });
-        if (!inventory || inventory.stock < quantity) {
+        
+        if (!inventory) {
+            // Create inventory with 0 stock if missing
+            inventory = await inventorySchema.create({
+                bookId,
+                stock: 0
+            });
+        }
+
+        if (inventory.stock < quantity) {
             return res.status(400).json({
                 success: false,
-                message: "Not enough stock"
+                message: "Sản phẩm đã hết hàng hoặc không đủ số lượng"
             });
         }
 

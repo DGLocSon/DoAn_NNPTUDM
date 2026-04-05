@@ -32,15 +32,34 @@ router.get("/book/:bookId", async (req, res) => {
   }
 });
 
-// UPDATE STOCK
+// UPDATE STOCK (Supports both inventory ID and bookId)
 router.put("/:id", async (req, res) => {
   try {
-    console.log("Dữ liệu nhận được:", req.body);
-    const item = await inventorySchema.findByIdAndUpdate(
-      req.params.id,
-      req.body,
-      { new: true }
-    );
+    const { stock, bookId } = req.body;
+    let item;
+    
+    // If id is provided, try to update by inventory ID
+    if (req.params.id && req.params.id !== 'undefined') {
+        item = await inventorySchema.findByIdAndUpdate(
+            req.params.id,
+            { stock },
+            { new: true }
+        );
+    }
+    
+    // Fallback: If not found or if we have bookId, try updating by bookId
+    if (!item && bookId) {
+        item = await inventorySchema.findOneAndUpdate(
+            { bookId, isDeleted: false },
+            { stock },
+            { new: true, upsert: true } // Create if doesn't exist!
+        );
+    }
+
+    if (!item) {
+        return res.status(404).send({ message: "Không tìm thấy bản ghi tồn kho để cập nhật" });
+    }
+    
     res.send(item);
   } catch (error) {
     res.status(400).send({ message: error.message });

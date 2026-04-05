@@ -69,7 +69,15 @@ router.post('/login', async function (req, res) {
 
         if (!result) return res.status(403).json({ success: false, message: "Sai thông tin đăng nhập" });
 
-        // 2. Kiểm tra mật khẩu
+        // 🔥 2. Kiểm tra nếu user bị chặn (status: false)
+        if (!result.status) {
+            return res.status(403).json({ 
+                success: false, 
+                message: "Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin." 
+            });
+        }
+
+        // 3. Kiểm tra mật khẩu
         const isMatch = bcrypt.compareSync(password, result.password);
         if (!isMatch) return res.status(403).json({ success: false, message: "Sai thông tin đăng nhập" });
 
